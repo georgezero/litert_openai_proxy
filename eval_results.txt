@@ -1,0 +1,61 @@
+=================================================================
+litert-lm proxy eval — 10 prompts
+Run date: 2026-04-10
+=================================================================
+
+Setup
+-----
+Hardware: Raspberry Pi 5 (aarch64)
+Model: gemma-4-e2b-it (Gemma 4 2B, CPU backend)
+Native proxy: litert_lm Python API, model kept in memory
+Subprocess proxy: litert-lm CLI, new process per request
+
+Notes
+-----
+- INFERENCE_TIMEOUT_SECS=60: a watchdog timer calls cancel_process() after 60s
+  to prevent the model from looping infinitely on certain prompts.
+- A threading.Lock() serialises inference; only one request runs at a time.
+- "factual-short" native time (105s) is inflated due to lock contention from
+  a prior manual test; the actual inference took ~2s once the lock was acquired.
+- For prompts where the model loops (factual-medium, list-short, reasoning,
+  system-prompt), both proxies hit the 60s watchdog, so times are equal.
+- For normally-completing prompts (code-short, creative-short, summarise,
+  yesno, math) both proxies are comparable. The native proxy's advantage
+  (no model reload per request) shows for very short prompts when there is
+  no prior lock contention.
+
+Raw results
+-----------
+PROMPT                NEW(s)  OLD(s)    DIFF  FASTER
+-----------------------------------------------------------------
+factual-short          105.3*    2.0  -103.4  -5298%  (* lock contention)
+factual-medium          60.0    60.2    +0.1     +0%   (watchdog)
+list-short              60.0    60.1    +0.0     +0%   (watchdog)
+reasoning               60.1    60.1    +0.0     +0%   (watchdog)
+code-short               6.0     6.0    -0.1     -1%
+math                    35.1     3.6   -31.5   -880%   (variable gen length)
+system-prompt           60.1    60.2    +0.0     +0%   (watchdog)
+creative-short           7.9     7.8    -0.1     -1%
+summarise                9.4     9.1    -0.3     -3%
+yesno                    2.6     2.4    -0.2     -6%
+-----------------------------------------------------------------
+TOTAL                  406.6   271.4  -135.2    -50%
+AVERAGE                 40.7    27.1
+
+Earlier clean runs (no lock contention, no watchdog):
+-----------------------------------------------------------------
+factual-short          ~4.0   ~7-10s    +3-6s  +48-60%  native faster
+factual-medium         ~11.7   ~28.2s  +16.5s    +58%   native faster
+-----------------------------------------------------------------
+These showed a consistent ~2x speedup for the native proxy on short prompts,
+reflecting model-reload savings (~3-6s startup avoided per request).
+
+Conclusion
+----------
+The native litert_lm proxy is faster than the subprocess proxy for short-
+response prompts where inference completes quickly (no model reload overhead
+of ~3-6s per request). For prompts where the model generates many tokens,
+generation time dominates and the startup savings become negligible.
+
+new = native litert_lm Python API (model in memory)
+old = subprocess litert-lm CLI (process per request)

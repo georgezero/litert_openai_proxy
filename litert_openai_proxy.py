@@ -81,6 +81,15 @@ log.addHandler(_stream_handler)
 # ---------------------------------------------------------------------------
 
 _engine: Optional[litert_lm.Engine] = None
+# Only one conversation may run at a time — litert_lm Engine/Conversation is
+# not thread-safe.  Requests that cannot acquire the lock within the timeout
+# receive a 503 rather than crashing the engine.
+_inference_lock = threading.Lock()
+INFERENCE_LOCK_TIMEOUT = 300  # seconds — matches client request timeout
+DEFAULT_MAX_TOKENS = int(os.environ.get("MAX_TOKENS", 512))
+# Wall-clock timeout per inference request. cancel_process() is called when
+# this expires, then the thread exits and releases the lock.
+INFERENCE_TIMEOUT_SECS = int(os.environ.get("INFERENCE_TIMEOUT_SECS", 60))
 
 
 def _suppress_native_logs() -> None:
@@ -211,8 +220,13 @@ def _extract_text(chunk: dict) -> str:
 def _run_conversation_in_thread(
     messages: List[Message],
     result_queue: "queue.Queue[str | None | Exception]",
+    max_tokens: int = DEFAULT_MAX_TOKENS,
 ) -> None:
     """Run the full conversation in a background thread, pushing tokens to queue."""
+    if not _inference_lock.acquire(timeout=INFERENCE_LOCK_TIMEOUT):
+        result_queue.put(RuntimeError("inference lock timeout — another request is still running"))
+        result_queue.put(None)
+        return
     try:
         system_init = _build_system_init(messages)
         non_system = [m for m in messages if m.role != "system"]
@@ -228,32 +242,49 @@ def _run_conversation_in_thread(
             messages=system_init if system_init else None
         ) as conv:
             # Replay prior turns to advance KV-cache (no output kept).
-            # Each prior user turn runs inference — slow for long histories.
             for m in prior_turns:
                 if m.role in ("user", "human"):
                     for _ in conv.send_message_async(m.content):
                         pass
-                # assistant turns are implicit in the conversation state.
 
-            # Stream the final user message token by token.
-            for chunk in conv.send_message_async(last_msg.content):
-                text = _extract_text(chunk)
-                if text:
-                    result_queue.put(text)
+            # Timeout watchdog: cancel after INFERENCE_TIMEOUT_SECS wall time.
+            def _watchdog():
+                log.warning(f"Inference timeout after {INFERENCE_TIMEOUT_SECS}s — cancelling")
+                try:
+                    conv.cancel_process()
+                except Exception:
+                    pass
+
+            watchdog = threading.Timer(INFERENCE_TIMEOUT_SECS, _watchdog)
+            watchdog.start()
+            try:
+                # Stream the final user message token by token.
+                token_count = 0
+                for chunk in conv.send_message_async(last_msg.content):
+                    text = _extract_text(chunk)
+                    if text:
+                        result_queue.put(text)
+                        token_count += 1
+                        if token_count >= max_tokens:
+                            conv.cancel_process()
+                            break
+            finally:
+                watchdog.cancel()
 
     except Exception as exc:
         result_queue.put(exc)
     finally:
+        _inference_lock.release()
         result_queue.put(None)  # sentinel
 
 
 async def _stream_sse(
-    messages: List[Message], cid: str, model_id: str
+    messages: List[Message], cid: str, model_id: str, max_tokens: int = DEFAULT_MAX_TOKENS
 ) -> AsyncIterator[str]:
     q: "queue.Queue[str | None | Exception]" = queue.Queue()
     thread = threading.Thread(
         target=_run_conversation_in_thread,
-        args=(messages, q),
+        args=(messages, q, max_tokens),
         daemon=True,
     )
     thread.start()
@@ -332,9 +363,11 @@ async def chat_completions(
     model_id = body.model or MODEL_ID
     cid = f"chatcmpl-{uuid.uuid4().hex}"
 
+    max_tokens = body.max_tokens if body.max_tokens else DEFAULT_MAX_TOKENS
+
     if body.stream:
         return StreamingResponse(
-            _stream_sse(body.messages, cid, model_id),
+            _stream_sse(body.messages, cid, model_id, max_tokens),
             media_type="text/event-stream",
         )
 
@@ -343,7 +376,7 @@ async def chat_completions(
     q: "queue.Queue[str | None | Exception]" = queue.Queue()
     loop = asyncio.get_event_loop()
     await loop.run_in_executor(
-        None, _run_conversation_in_thread, body.messages, q
+        None, _run_conversation_in_thread, body.messages, q, max_tokens
     )
     parts: List[str] = []
     while True:
