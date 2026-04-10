@@ -1,0 +1,21 @@
+[Unit]
+Description=LiteRT OpenAI-compatible Proxy
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+Environment=HOME=/home/george
+Environment=PATH=/home/george/.local/bin:/usr/local/bin:/usr/bin:/bin
+Environment=OPENAI_API_KEY=
+Environment=MODEL_ID=gemma-4-e2b-it
+Environment=HOST=0.0.0.0
+Environment=PORT=8000
+# Optional: set LITERT_BACKEND=gpu to use VideoCore VII on Pi 5
+Environment=LITERT_BACKEND=cpu
+ExecStart=/home/george/run-litert-openai-proxy.sh
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=default.target
