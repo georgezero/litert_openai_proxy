@@ -28,6 +28,7 @@ PORT_NEW = int(os.environ.get("PORT_NEW", 8000))
 PORT_OLD = int(os.environ.get("PORT_OLD", 8001))
 SKIP_START_OLD = os.environ.get("SKIP_START_OLD", "")
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+REPO_DIR = os.path.dirname(SCRIPT_DIR)
 
 PROMPTS = [
     # (label, messages) — kept short to complete within ~60s on Pi 5
@@ -122,10 +123,10 @@ def start_old_proxy() -> bool:
         "MODEL_ID": "gemma-4-e2b-it",
         "LITERT_MODEL_ID": "gemma-4-e2b-it",
         "VENV_PATH": os.path.expanduser("~/.venvs/litert-openai-proxy"),
-        "APP_PATH": os.path.join(SCRIPT_DIR, "litert_openai_proxy_subprocess.py"),
+        "APP_PATH": os.path.join(REPO_DIR, "old", "litert_openai_proxy_subprocess.py"),
         "OPENAI_API_KEY": "",  # don't inherit caller's OpenAI key
     })
-    script = os.path.join(SCRIPT_DIR, "run-litert-openai-proxy-subprocess.sh")
+    script = os.path.join(REPO_DIR, "old", "run-litert-openai-proxy-subprocess.sh")
     print(f"  Starting subprocess proxy on port {PORT_OLD}...")
     _old_proc = subprocess.Popen(
         [script],
