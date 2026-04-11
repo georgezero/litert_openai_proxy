@@ -89,7 +89,7 @@ INFERENCE_LOCK_TIMEOUT = 300  # seconds — matches client request timeout
 DEFAULT_MAX_TOKENS = int(os.environ.get("MAX_TOKENS", 512))
 # Wall-clock timeout per inference request. cancel_process() is called when
 # this expires, then the thread exits and releases the lock.
-INFERENCE_TIMEOUT_SECS = int(os.environ.get("INFERENCE_TIMEOUT_SECS", 60))
+INFERENCE_TIMEOUT_SECS = int(os.environ.get("INFERENCE_TIMEOUT_SECS", 120))
 
 
 def _suppress_native_logs() -> None:
@@ -260,12 +260,22 @@ def _run_conversation_in_thread(
             try:
                 # Stream the final user message token by token.
                 token_count = 0
+                recent: list[str] = []
+                REPEAT_WINDOW = 20  # cancel if last 20 tokens are identical
                 for chunk in conv.send_message_async(last_msg.content):
                     text = _extract_text(chunk)
                     if text:
                         result_queue.put(text)
                         token_count += 1
                         if token_count >= max_tokens:
+                            log.warning("max_tokens reached — cancelling")
+                            conv.cancel_process()
+                            break
+                        recent.append(text)
+                        if len(recent) > REPEAT_WINDOW:
+                            recent.pop(0)
+                        if len(recent) == REPEAT_WINDOW and len(set(recent)) == 1:
+                            log.warning(f"Repetition loop detected — cancelling")
                             conv.cancel_process()
                             break
             finally:
@@ -291,6 +301,7 @@ async def _stream_sse(
 
     loop = asyncio.get_event_loop()
 
+    parts: List[str] = []
     while True:
         # Fetch next item without blocking the event loop
         item = await loop.run_in_executor(None, q.get)
@@ -300,8 +311,10 @@ async def _stream_sse(
             yield _sse_chunk(cid, model_id, f"[ERROR: {item}]", "stop")
             yield "data: [DONE]\n\n"
             return
+        parts.append(item)
         yield _sse_chunk(cid, model_id, item, None)
 
+    log.info(f"<< [assistant] {''.join(parts)}")
     yield _sse_chunk(cid, model_id, "", "stop")
     yield "data: [DONE]\n\n"
 
@@ -365,6 +378,10 @@ async def chat_completions(
 
     max_tokens = body.max_tokens if body.max_tokens else DEFAULT_MAX_TOKENS
 
+    # Log incoming messages
+    for m in body.messages:
+        log.info(f">> [{m.role}] {m.content}")
+
     if body.stream:
         return StreamingResponse(
             _stream_sse(body.messages, cid, model_id, max_tokens),
@@ -389,6 +406,7 @@ async def chat_completions(
 
     content = "".join(parts)
     elapsed = int((time.time() - started) * 1000)
+    log.info(f"<< [assistant] {content}")
 
     return {
         "id": cid,
