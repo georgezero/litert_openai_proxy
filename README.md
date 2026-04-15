@@ -220,7 +220,7 @@ print()
 | `HOST` | `0.0.0.0` | Bind address |
 | `PORT` | `8000` | Port |
 | `LITERT_BACKEND` | `cpu` | `cpu` or `gpu` (VideoCore VII on Pi 5) |
-| `LITERT_MAX_NUM_TOKENS` | `16384` | Engine token window limit (raise from 4096 for longer prompts) |
+| `LITERT_MAX_NUM_TOKENS` | `4096` | Engine token window limit (default runtime context window) |
 | `OPENAI_API_KEY` | _(unset)_ | If set, Bearer token auth is required |
 | `VENV_PATH` | `~/.venvs/litert-openai-proxy` | Python venv location |
 
@@ -229,9 +229,13 @@ Set these in the service with `systemctl --user edit litert-openai-proxy`:
 ```ini
 [Service]
 Environment=LITERT_BACKEND=gpu
-Environment=LITERT_MAX_NUM_TOKENS=16384
+Environment=LITERT_MAX_NUM_TOKENS=4096
 Environment=OPENAI_API_KEY=your-secret
 ```
+
+Performance note (Raspberry Pi 5): `LITERT_MAX_NUM_TOKENS=16384` was tested
+and worked, but was too slow in practice on Pi 5. Recommended default is
+`LITERT_MAX_NUM_TOKENS=4096`.
 
 ---
 
