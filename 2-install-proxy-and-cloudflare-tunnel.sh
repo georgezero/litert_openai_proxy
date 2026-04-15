@@ -17,6 +17,7 @@
 #   HOST=0.0.0.0
 #   PORT=8000
 #   LITERT_BACKEND=cpu
+#   LITERT_MAX_NUM_TOKENS=16384
 #   OPENAI_API_KEY=
 #   CF_TUNNEL_NAME=pecan-litert-openai
 #   CF_HOSTNAME=pecan.ggg.ad
@@ -35,6 +36,7 @@ LOG_FILE="${LOG_FILE:-$HOME/.local/state/litert-proxy/proxy.log}"
 HOST="${HOST:-0.0.0.0}"
 PORT="${PORT:-8000}"
 LITERT_BACKEND="${LITERT_BACKEND:-cpu}"
+LITERT_MAX_NUM_TOKENS="${LITERT_MAX_NUM_TOKENS:-16384}"
 OPENAI_API_KEY="${OPENAI_API_KEY:-}"
 
 PROXY_SERVICE_NAME="litert-openai-proxy"
@@ -143,6 +145,7 @@ Environment=MODEL_ID=$MODEL_ID
 Environment=HOST=$HOST
 Environment=PORT=$PORT
 Environment=LITERT_BACKEND=$LITERT_BACKEND
+Environment=LITERT_MAX_NUM_TOKENS=$LITERT_MAX_NUM_TOKENS
 Environment=VENV_PATH=$VENV_PATH
 Environment=LOG_FILE=$LOG_FILE
 StandardOutput=append:$LOG_FILE

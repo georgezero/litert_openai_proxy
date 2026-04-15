@@ -13,6 +13,8 @@ Environment=HOST=0.0.0.0
 Environment=PORT=8000
 # Optional: set LITERT_BACKEND=gpu to use VideoCore VII on Pi 5
 Environment=LITERT_BACKEND=cpu
+# Engine context window budget. Increase if your model/runtime supports it.
+Environment=LITERT_MAX_NUM_TOKENS=16384
 ExecStart=/home/george/run-litert-openai-proxy.sh
 Restart=always
 RestartSec=2

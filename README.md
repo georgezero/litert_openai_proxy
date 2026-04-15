@@ -220,6 +220,7 @@ print()
 | `HOST` | `0.0.0.0` | Bind address |
 | `PORT` | `8000` | Port |
 | `LITERT_BACKEND` | `cpu` | `cpu` or `gpu` (VideoCore VII on Pi 5) |
+| `LITERT_MAX_NUM_TOKENS` | `16384` | Engine token window limit (raise from 4096 for longer prompts) |
 | `OPENAI_API_KEY` | _(unset)_ | If set, Bearer token auth is required |
 | `VENV_PATH` | `~/.venvs/litert-openai-proxy` | Python venv location |
 
@@ -228,6 +229,7 @@ Set these in the service with `systemctl --user edit litert-openai-proxy`:
 ```ini
 [Service]
 Environment=LITERT_BACKEND=gpu
+Environment=LITERT_MAX_NUM_TOKENS=16384
 Environment=OPENAI_API_KEY=your-secret
 ```
 

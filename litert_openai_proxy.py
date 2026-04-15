@@ -49,6 +49,7 @@ BACKEND = (
     if os.environ.get("LITERT_BACKEND", "cpu").lower() == "gpu"
     else litert_lm.Backend.CPU
 )
+ENGINE_MAX_NUM_TOKENS = int(os.environ.get("LITERT_MAX_NUM_TOKENS", "4096"))
 REQUIRE_KEY = os.environ.get("OPENAI_API_KEY", "").strip()
 LOG_FILE = os.path.expanduser(
     os.environ.get("LOG_FILE", "~/.local/state/litert-proxy/proxy.log")
@@ -120,8 +121,14 @@ async def lifespan(app: FastAPI):
             f"gemma-4-E2B-it.litertlm {MODEL_ID}"
         )
 
-    log.info(f"Loading model: {MODEL_PATH} (backend={BACKEND})")
-    _engine = litert_lm.Engine(MODEL_PATH, backend=BACKEND)
+    log.info(
+        f"Loading model: {MODEL_PATH} (backend={BACKEND}, max_num_tokens={ENGINE_MAX_NUM_TOKENS})"
+    )
+    _engine = litert_lm.Engine(
+        MODEL_PATH,
+        backend=BACKEND,
+        max_num_tokens=ENGINE_MAX_NUM_TOKENS,
+    )
     _engine.__enter__()
     log.info(f"Model loaded and ready. Logging to {LOG_FILE}")
     yield
@@ -348,6 +355,7 @@ def healthz() -> dict:
         "ok": True,
         "model": MODEL_ID,
         "backend": "gpu" if BACKEND == litert_lm.Backend.GPU else "cpu",
+        "max_num_tokens": ENGINE_MAX_NUM_TOKENS,
         "engine_loaded": _engine is not None,
     }
 
